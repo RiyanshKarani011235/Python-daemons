@@ -43,7 +43,7 @@ def daemonize(pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'
 
 	signal.signal(signal.SIGTERM, sigterm_handler)
 
-def main(source_directory, destination_directory) :
+def main(source_directory, destination_directory, refresh_time=5) :
 	# all the important code here 
 	while True : 
 		if not(os.path.exists(source_directory[1:-1])) : 
@@ -55,7 +55,7 @@ def main(source_directory, destination_directory) :
 			source_directory = source_directory[:-1] + '/' + '"'
 		os.system('rsync -az --delete ' + source_directory + ' ' + destination_directory)
 
-		time.sleep(5)
+		time.sleep(refresh_time)
 
 def reverse_string(string) : 
 	return_string = ''
@@ -67,7 +67,7 @@ def reverse_string(string) :
 
 if __name__ == '__main__' : 
 	if len(sys.argv) < 1 : 
-		sys.stderr.write('Usage : \n[start] [source_directory] [destination_directory]\n[stop] [daemon_name]\n[cleanup]')
+		sys.stderr.write('Usage : \n[start] [source_directory] [destination_directory] [refresh_time]\n[stop] [daemon_name]\n[cleanup]')
 		raise SystemExit(1)
 
 	filenumber_list = []
@@ -77,22 +77,13 @@ if __name__ == '__main__' :
 		# find find directory_sync daemons already running
 		for root, dirs, files in os.walk('/tmp/') : 
 			for file in files : 
+				print(file)
 				if ('directory_sync' in file) and ('directory_sync.' not in file) and ('.pid' in file): 
 					filename = file.split('.pid')[0]
-					filenumber = ''
-					i = len(filename) - 1
-					while i >= 0 : 
-						try : 
-							int(filename[i])
-						except ValueError: 
-							break
-						else :
-							filenumber += filename[i]
-							i -= 1
+					filenumber = int(filename.split('_')[-1])
+					print('daemon number ' + str(filenumber) + ' already running')
 
-					print('filenumber : ' + filenumber)
-
-					filenumber = int(reverse_string(filenumber))
+					# filenumber = int(reverse_string(filenumber))
 					filenumber_list.append(filenumber)
 
 		# if empty
@@ -103,7 +94,7 @@ if __name__ == '__main__' :
 		logfile = '/tmp/directory_sync_' + str(max(filenumber_list) + 1) + '.log'
 
 		if len(sys.argv) < 4 : 
-			sys.stderr.write('Usage : [start] [source_directory] [destination_directory]')
+			sys.stderr.write('Usage : [start] [source_directory] [destination_directory] [refresh_time]')
 			raise SystemExit(1)
 		try : 
 			daemonize(pidfile, stdout=logfile, stderr=logfile)
@@ -120,20 +111,47 @@ if __name__ == '__main__' :
 			element = sys.argv[i] 
 			if element[-1] != '\\' : 
 				end_index_list.append(i)
-		print(end_index_list)
+		with open(logfile, 'a') as f : 	
+			f.write('end_index_list : ' + str(end_index_list))
 
-		if len(end_index_list) != 2 : 
-			sys.stderr.write('Usage : [start] [source_directory] [destination_directory]')
-			raise SystemExit(1) 
+		if len(end_index_list) in [2, 3] :
+			for i in range(end_index_list[0] + 1) : 
+				source_directory += sys.argv[2:][i]
+			source_directory += '"'
+			for i in range(end_index_list[0] + 1, end_index_list[1] + 1) : 
+				destination_directory += sys.argv[2:][i]
+			destination_directory += '"'
+			with open(logfile, 'a') as f : 
+				f.write('source directory  : ' + source_directory + '\n')
+				f.write('destination directory : ' + destination_directory + '\n')
+				f.write(str(sys.argv))
+			 
+				
+			if len(end_index_list) == 2 : 
+				with open(logfile, 'a') as f : 
+					f.write('starting with default refresh time of 5 seconds')
+				main(source_directory, destination_directory)
+			else : 
+				try : 
+					refresh_time = int(sys.argv[-1])
+					with open(logfile, 'a') as f : 
+						f.write('starting with refresh time set as ' + str(refresh_time) + ' seconds\n')
+					main(source_directory, destination_directory, int(refresh_time))
 
-		for i in range(end_index_list[0] + 1) : 
-			source_directory += sys.argv[2:][i]
-		source_directory += '"'
-		for i in range(end_index_list[0] + 1, end_index_list[1] + 1) : 
-			destination_directory += sys.argv[2:][i]
-		destination_directory += '"'
-		main(source_directory, destination_directory)
+				except ValueError : 
+					try : 
+						refresh_time = float(sys.argv[-1])
+						with open(logfile, 'a') as f : 
+							f.write('starting with refresh time set as ' + str(refresh_time) + ' seconds\n')
+						main(source_directory, destination_directory, int(refresh_time))
 
+					except ValueError : 
+						sys.stderr.write('refresh_time should be an integer or a float')
+						raise SystemExit(1)
+
+		else : 
+			sys.stderr.write('Usage : [start] [source_directory] [destination_directory] [refresh_time]')
+			raise SystemExit(1)	
 
 	elif sys.argv[1] == 'stop' : 
 		if len(sys.argv) != 3 : 
